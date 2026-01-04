@@ -118,7 +118,7 @@ go run ./cmd/client -host localhost:8080 -op upload -size 10MB
 
 ### Mode 2: Using Configuration File
 
-Create a `config.yaml` file (see `config.yaml.example`):
+Create a `config.yaml` file (see `config.example.yaml`):
 
 ```yaml
 hosts:
@@ -131,16 +131,19 @@ tests:
     operation: upload
     repeat: 3
     size: 16KB
+    timeout: 5s  # Optional: override default timeout
 
   - name: "Medium Download Test"
     operation: download
     repeat: 3
     size: 256KB
+    # timeout not specified, will use default (10s)
 
   - name: "Large Upload Test"
     operation: upload
     repeat: 2
     size: 1MB
+    timeout: 1m30s  # 1 minute 30 seconds
 ```
 
 Run tests from config:
@@ -162,6 +165,7 @@ go run ./cmd/client -config my-tests.yaml -host localhost:9000 -op download -siz
 - `-host` - Server address (host:port)
 - `-op` - Operation type: `download` or `upload`
 - `-size` - Data size with unit: `1KB`, `512KB`, `1MB`, `16MB`, etc.
+- `-timeout` - Timeout duration for operations (default: `10s`, supports: `1s`, `500ms`, `1m`, `1m30s`, etc.)
 
 ### Configuration File Format
 
@@ -176,6 +180,8 @@ tests:           # List of tests to execute
     operation: upload        # "upload" or "download"
     repeat: 3                # Number of times to repeat this test
     size: 16KB              # Data size (supports KB, MB, GB)
+    timeout: 10s            # Timeout duration (optional, default: 10s)
+                             # Supports: 1s, 500ms, 1m, 1m30s, etc.
 ```
 
 ### Execution Rules

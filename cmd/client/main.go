@@ -31,6 +31,7 @@ type Test struct {
 	Operation string `yaml:"operation"`
 	Repeat    int    `yaml:"repeat"`
 	Size      string `yaml:"size"`
+	Timeout   string `yaml:"timeout"` // Timeout duration (e.g., "10s", "1m", "500ms"), empty means use default
 }
 
 // TestResult holds the results of a test execution
@@ -49,6 +50,7 @@ func main() {
 	host := flag.String("host", "", "Server address (host:port)")
 	operation := flag.String("op", "", "Operation: 'download' or 'upload'")
 	size := flag.String("size", "", "Data size (e.g., 1KB, 512KB, 1MB, 16MB)")
+	timeout := flag.String("timeout", "10s", "Timeout for operations (e.g., 10s, 1m, 500ms)")
 	flag.Parse()
 
 	var tests []Test
@@ -82,6 +84,7 @@ func main() {
 			Operation: *operation,
 			Repeat:    1,
 			Size:      *size,
+			Timeout:   *timeout,
 		}
 		tests = append(tests, flagTest)
 		
@@ -111,13 +114,13 @@ func main() {
 	var allResults []TestResult
 	
 	for _, test := range tests {
-		if err := validateTest(&test); err != nil {
+		if err := validateTest(&test, *timeout); err != nil {
 			log.Printf("⚠ Skipping invalid test '%s': %v\n", test.Name, err)
 			continue
 		}
 		
 		for _, host := range hosts {
-			results := executeTest(test, host)
+			results := executeTest(test, host, *timeout)
 			allResults = append(allResults, results...)
 		}
 	}
@@ -127,8 +130,25 @@ func main() {
 }
 
 // executeTest runs a single test on a specific host
-func executeTest(test Test, host string) []TestResult {
+func executeTest(test Test, host string, defaultTimeout string) []TestResult {
 	log.Printf("\n--- Test: %s on %s ---\n", test.Name, host)
+	
+	// Determine timeout: use test-specific timeout if set, otherwise use default
+	timeoutStr := test.Timeout
+	if timeoutStr == "" {
+		timeoutStr = defaultTimeout
+	}
+	
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		log.Printf("✗ Invalid timeout format '%s': %v\n", timeoutStr, err)
+		return []TestResult{{
+			TestName: test.Name,
+			Host:     host,
+			Success:  false,
+			Error:    fmt.Errorf("invalid timeout format: %w", err),
+		}}
+	}
 	
 	dataSize, err := parseSize(test.Size)
 	if err != nil {
@@ -144,9 +164,9 @@ func executeTest(test Test, host string) []TestResult {
 	var results []TestResult
 	
 	for i := 1; i <= test.Repeat; i++ {
-		log.Printf("Attempt %d/%d...\n", i, test.Repeat)
+		log.Printf("Attempt %d/%d (timeout: %v)...\n", i, test.Repeat, timeout)
 		
-		conn, err := net.Dial("tcp", host)
+		conn, err := net.DialTimeout("tcp", host, timeout)
 		if err != nil {
 			log.Printf("✗ Failed to connect: %v\n", err)
 			results = append(results, TestResult{
@@ -158,6 +178,9 @@ func executeTest(test Test, host string) []TestResult {
 			})
 			continue
 		}
+		
+		// Set deadline for the entire operation
+		conn.SetDeadline(time.Now().Add(timeout))
 		
 		var testErr error
 		var duration time.Duration
@@ -202,7 +225,7 @@ func executeTest(test Test, host string) []TestResult {
 }
 
 // validateTest checks if test configuration is valid
-func validateTest(test *Test) error {
+func validateTest(test *Test, defaultTimeout string) error {
 	if test.Name == "" {
 		return fmt.Errorf("test name is required")
 	}
@@ -214,6 +237,16 @@ func validateTest(test *Test) error {
 	}
 	if test.Size == "" {
 		return fmt.Errorf("size is required")
+	}
+	
+	// Validate timeout format
+	if test.Timeout != "" {
+		_, err := time.ParseDuration(test.Timeout)
+		if err != nil {
+			return fmt.Errorf("invalid timeout format '%s': %w", test.Timeout, err)
+		}
+	} else {
+		test.Timeout = defaultTimeout // Use default if not specified
 	}
 	
 	// Validate size format
