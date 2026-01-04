@@ -267,7 +267,17 @@ func printSummary(results []TestResult) {
 	var totalDuration time.Duration
 	var totalBytes uint32
 	
+	// Group results by test name and host
+	type testKey struct {
+		testName string
+		host     string
+	}
+	testGroups := make(map[testKey][]TestResult)
+	
 	for _, result := range results {
+		key := testKey{testName: result.TestName, host: result.Host}
+		testGroups[key] = append(testGroups[key], result)
+		
 		if result.Success {
 			successCount++
 			totalDuration += result.Duration
@@ -289,7 +299,45 @@ func printSummary(results []TestResult) {
 		log.Printf("Total data transferred: %.2f MB\n", float64(totalBytes)/1024/1024)
 	}
 	
-	log.Printf("==================================\n")
+	// Show failed tests details
+	if failCount > 0 {
+		log.Printf("\n--- Failed Tests Details ---\n")
+		
+		for key, groupResults := range testGroups {
+			failedAttempts := 0
+			totalAttempts := len(groupResults)
+			var errors []string
+			
+			for _, result := range groupResults {
+				if !result.Success {
+					failedAttempts++
+					if result.Error != nil {
+						errors = append(errors, fmt.Sprintf("  Attempt %d: %v", result.Attempt, result.Error))
+					}
+				}
+			}
+			
+			if failedAttempts > 0 {
+				log.Printf("\n✗ Test: %s on %s\n", key.testName, key.host)
+				log.Printf("  Failed: %d/%d attempts\n", failedAttempts, totalAttempts)
+				
+				// Show unique errors
+				if len(errors) > 0 {
+					log.Printf("  Errors:\n")
+					// Deduplicate errors
+					uniqueErrors := make(map[string]bool)
+					for _, errMsg := range errors {
+						if !uniqueErrors[errMsg] {
+							log.Printf("%s\n", errMsg)
+							uniqueErrors[errMsg] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	log.Printf("\n==================================\n")
 }
 
 // performDownload requests data from server and validates hash
