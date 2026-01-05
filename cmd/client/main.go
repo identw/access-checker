@@ -127,6 +127,9 @@ func main() {
 	
 	// Print summary
 	printSummary(allResults)
+
+	fmt.Println("Press Enter to exit...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
 
 // executeTest runs a single test on a specific host
